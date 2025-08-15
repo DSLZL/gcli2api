@@ -15,7 +15,7 @@ import httpx
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request as GoogleAuthRequest
 
-from .config import CREDENTIALS_DIR, CODE_ASSIST_ENDPOINT
+from .config import CREDENTIALS_DIR, CODE_ASSIST_ENDPOINT, AUTO_BAN_ENABLED, AUTO_BAN_ERROR_CODES
 from .utils import get_user_agent, get_client_metadata
 from log import log
 
@@ -124,7 +124,26 @@ class CredentialManager:
         # 标准化路径以确保一致性
         normalized_filename = os.path.abspath(filename)
         
+        # 先检查是否已存在（可能用不同的路径格式）
+        existing_state = None
+        existing_key = None
+        for key, state in self._creds_state.items():
+            if os.path.abspath(key) == normalized_filename:
+                existing_state = state
+                existing_key = key
+                break
+        
+        if existing_state is not None:
+            # 如果找到了现有状态但路径格式不同，更新键名
+            if existing_key != normalized_filename:
+                self._creds_state[normalized_filename] = existing_state
+                del self._creds_state[existing_key]
+                log.debug(f"Updated state key from {existing_key} to {normalized_filename}")
+            return existing_state
+        
+        # 只有真正没有找到时才创建新状态
         if normalized_filename not in self._creds_state:
+            log.debug(f"Creating new state for {normalized_filename}")
             self._creds_state[normalized_filename] = {
                 "error_codes": [],
                 "disabled": False,
@@ -152,16 +171,32 @@ class CredentialManager:
                 cred_state["cd_until"] = tomorrow_8am.isoformat()
                 log.warning(f"Set CD status for {normalized_filename} until {tomorrow_8am}")
             
+            # 自动封禁功能
+            log.debug(f"AUTO_BAN check: enabled={AUTO_BAN_ENABLED}, status_code={status_code}, error_codes={AUTO_BAN_ERROR_CODES}")
+            if AUTO_BAN_ENABLED and status_code in AUTO_BAN_ERROR_CODES:
+                if not cred_state.get("disabled", False):
+                    cred_state["disabled"] = True
+                    log.warning(f"AUTO_BAN: Disabled credential {os.path.basename(normalized_filename)} due to error {status_code}")
+                else:
+                    log.debug(f"Credential {os.path.basename(normalized_filename)} already disabled, error {status_code} recorded")
+            elif AUTO_BAN_ENABLED:
+                log.debug(f"AUTO_BAN enabled but status_code {status_code} not in ban list {AUTO_BAN_ERROR_CODES}")
+            else:
+                log.debug(f"AUTO_BAN disabled, status_code {status_code} recorded but no auto ban")
+            
             await self._save_state()
 
-    async def record_success(self, filename: str):
+    async def record_success(self, filename: str, api_type: str = "other"):
         """记录成功的API调用"""
         async with self._lock:
             normalized_filename = os.path.abspath(filename)
             cred_state = self._get_cred_state(normalized_filename)
             
-            # 清除所有错误码
-            cred_state["error_codes"] = []
+            # 只有聊天内容生成API成功才清除错误码，其他API不清除
+            if api_type == "chat_content":
+                cred_state["error_codes"] = []
+                log.info(f"Cleared error codes for {normalized_filename} due to successful chat content generation")
+            
             cred_state["last_success"] = datetime.now(timezone.utc).isoformat()
             
             await self._save_state()
@@ -556,3 +591,14 @@ class CredentialManager:
                 await self._discover_credential_files()
         
         return await self.get_credentials()
+    
+    async def test_auto_ban(self, filename: str, status_code: int = 403):
+        """测试自动封禁功能（仅用于调试）"""
+        log.info(f"[TEST] Testing auto ban for file {filename} with status code {status_code}")
+        log.info(f"[TEST] AUTO_BAN_ENABLED: {AUTO_BAN_ENABLED}")
+        log.info(f"[TEST] AUTO_BAN_ERROR_CODES: {AUTO_BAN_ERROR_CODES}")
+        await self.record_error(filename, status_code)
+        
+        # 检查状态
+        cred_state = self._get_cred_state(filename)
+        log.info(f"[TEST] After test, credential state: {cred_state}")
