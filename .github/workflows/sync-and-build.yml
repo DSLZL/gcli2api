@@ -68,34 +68,48 @@ jobs:
           echo "本地提交: $LOCAL_COMMIT"
           echo "上游提交: $UPSTREAM_COMMIT"
           
-          # 配置 sparse-checkout 来保护 .github 目录
-          echo "🛡️ 配置 sparse-checkout 保护 .github 目录..."
-          git config core.sparseCheckout true
+          # 备份 .github 目录
+          echo "🛡️ 备份 .github 目录..."
+          cp -r .github /tmp/github-backup
           
-          # 设置 sparse-checkout 规则：包含所有文件但排除 .github 目录
-          cat > .git/info/sparse-checkout << 'EOF'
-          /*
-          !/.github/
-          EOF
-          
-          # 创建一个临时分支进行合并操作
+          # 创建临时分支并应用上游更改
           echo "🌿 创建临时分支..."
-          git checkout -b temp-sync-$(date +%Y%m%d-%H%M%S)
+          TEMP_BRANCH="temp-sync-$(date +%Y%m%d-%H%M%S)"
+          git checkout -b $TEMP_BRANCH
           
-          # 使用 sparse-checkout 读取上游更改
-          echo "📝 应用上游更改 (排除 .github 目录)..."
-          git read-tree -u upstream/master
+          # 使用简单的方式：直接checkout上游文件但排除.github目录
+          echo "📝 同步上游文件 (排除 .github 目录)..."
           
-          # 添加所有更改到暂存区
-          git add .
+          # 获取上游仓库中所有文件列表，但排除 .github 目录
+          git ls-tree -r --name-only upstream/master | grep -v '^\.github/' > /tmp/files_to_sync
           
-          # 检查是否有更改需要提交
-          if git diff --staged --quiet; then
-            echo "ℹ️ 没有检测到文件更改"
+          if [ -s /tmp/files_to_sync ]; then
+            # 逐个checkout上游文件
+            while IFS= read -r file; do
+              # 创建目录结构（如果需要）
+              mkdir -p "$(dirname "$file")" 2>/dev/null || true
+              # checkout文件
+              git show upstream/master:"$file" > "$file" 2>/dev/null || echo "⚠️ 无法同步文件: $file"
+            done < /tmp/files_to_sync
+            
+            echo "📦 添加同步的文件到暂存区..."
+            git add .
+            
+            # 检查是否有更改
+            if git diff --staged --quiet; then
+              echo "ℹ️ 没有检测到文件更改"
+            else
+              echo "💾 提交同步更改..."
+              git commit -m "sync: 同步上游仓库更改 (保护 .github 目录)"
+            fi
           else
-            echo "💾 提交同步更改..."
-            git commit -m "sync: 同步上游仓库更改 (保护 .github 目录)"
+            echo "ℹ️ 没有找到需要同步的文件"
           fi
+          
+          # 恢复 .github 目录
+          echo "🔄 恢复 .github 目录..."
+          rm -rf .github
+          cp -r /tmp/github-backup .github
           
           # 切换回 master 分支
           echo "🔄 切换回 master 分支..."
@@ -103,15 +117,13 @@ jobs:
           
           # 合并临时分支的更改
           echo "🔗 合并同步更改..."
-          git merge temp-sync-$(date +%Y%m%d-%H%M%S) --no-edit
+          git merge $TEMP_BRANCH --no-edit
           
-          # 清理临时分支
-          echo "🧹 清理临时分支..."
-          git branch -D temp-sync-$(date +%Y%m%d-%H%M%S)
-          
-          # 禁用 sparse-checkout
-          echo "🔧 恢复正常的 checkout 模式..."
-          git config core.sparseCheckout false
+          # 清理临时分支和文件
+          echo "🧹 清理临时文件..."
+          git branch -D $TEMP_BRANCH
+          rm -f /tmp/files_to_sync
+          rm -rf /tmp/github-backup
           
           # 验证关键文件
           echo "✅ 验证关键文件完整性..."
