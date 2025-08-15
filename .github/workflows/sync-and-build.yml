@@ -69,7 +69,7 @@ jobs:
           echo "上游提交: $UPSTREAM_COMMIT"
           
           # 备份 .github 目录
-          echo "🛡️ 备份 .github 目录..."
+          echo "�️ 备份 .github 目录..."
           cp -r .github /tmp/github-backup
           
           # 创建临时分支并应用上游更改
@@ -80,8 +80,8 @@ jobs:
           # 使用简单的方式：直接checkout上游文件但排除.github目录
           echo "📝 同步上游文件 (排除 .github 目录)..."
           
-          # 获取上游仓库中所有文件列表，但排除 .github 目录
-          git ls-tree -r --name-only upstream/master | grep -v '^\.github/' > /tmp/files_to_sync
+          # 获取上游仓库中所有文件列表，但排除 .github 目录和 Dockerfile
+          git ls-tree -r --name-only upstream/master | grep -v -E '^\.github/|^Dockerfile$' > /tmp/files_to_sync
           
           if [ -s /tmp/files_to_sync ]; then
             # 逐个checkout上游文件
@@ -92,7 +92,7 @@ jobs:
               git show upstream/master:"$file" > "$file" 2>/dev/null || echo "⚠️ 无法同步文件: $file"
             done < /tmp/files_to_sync
             
-            echo "📦 添加同步的文件到暂存区..."
+            echo "� 添加同步的文件到暂存区..."
             git add .
             
             # 检查是否有更改
@@ -107,12 +107,12 @@ jobs:
           fi
           
           # 恢复 .github 目录
-          echo "🔄 恢复 .github 目录..."
+          echo "� 恢复 .github 目录..."
           rm -rf .github
           cp -r /tmp/github-backup .github
           
           # 切换回 master 分支
-          echo "🔄 切换回 master 分支..."
+          echo "� 切换回 master 分支..."
           git checkout master
           
           # 合并临时分支的更改
