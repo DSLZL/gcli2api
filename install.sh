@@ -1,5 +1,6 @@
-pkg install rust build-essential python git ninja clang cmake
+apt install git uv
 git clone https://github.com/su-kaka/gcli2api.git
 cd ./gcli2api
-pip install -r requirements.txt --break-system-packages
+uv sync
+source ./venv/Scripts/activate
 python web.py
