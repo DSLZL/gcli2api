@@ -28,62 +28,106 @@ jobs:
         with:
           # 需要一个有写权限的 PAT (Personal Access Token) 来推送更新
           token: ${{ secrets.PAT_TOKEN }}
+          fetch-depth: 0  # 获取完整的历史记录
 
-      - name: Backup workflow files
+      - name: 配置 Git 用户信息
         run: |
-          # 备份 .github 目录到临时位置
-          cp -r .github /tmp/github-backup || echo "备份失败，可能是首次运行"
-
-      - name: Smart sync with upstream (保护 .github 目录)
-        run: |
-          # 配置 Git 用户信息
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
+
+      - name: 安全同步上游仓库 (保护 .github 目录)
+        run: |
+          echo "🔄 开始安全同步流程..."
           
-          # 添加上游远程仓库
-          git remote add upstream https://github.com/su-kaka/gcli2api.git 2>/dev/null || echo "上游远程仓库已存在"
+          # 检查当前状态
+          echo "📊 当前仓库状态:"
+          git status --porcelain
           
-          # 拉取上游更新
-          git fetch upstream master
-          
-          # 切换到临时分支进行合并
-          git checkout -b temp-sync-branch
-          
-          # 将上游的变更合并到临时分支，但排除 .github 目录
-          git merge upstream/master --no-edit --allow-unrelated-histories || {
-            echo "合并冲突，尝试强制同步除 .github 外的所有文件"
-            
-            # 重置到上游状态，但保护 .github 目录
-            git reset --hard upstream/master
-            
-            # 恢复 .github 目录
-            if [ -d "/tmp/github-backup" ]; then
-              cp -r /tmp/github-backup .github
-              echo "✅ 已恢复 .github 目录"
-            fi
-          }
-          
-          # 切换回 master 分支并应用更改
-          git checkout master
-          git merge temp-sync-branch --no-edit
-          
-          # 确保 .github 目录存在并包含工作流
-          if [ ! -f ".github/workflows/sync-and-build.yml" ]; then
-            echo "⚠️ 工作流文件丢失，正在恢复..."
-            mkdir -p .github/workflows
-            if [ -f "/tmp/github-backup/workflows/sync-and-build.yml" ]; then
-              cp /tmp/github-backup/workflows/sync-and-build.yml .github/workflows/
-              echo "✅ 已从备份恢复工作流文件"
-            fi
+          # 添加上游远程仓库 (如果不存在)
+          if ! git remote get-url upstream >/dev/null 2>&1; then
+            echo "➕ 添加上游远程仓库..."
+            git remote add upstream https://github.com/su-kaka/gcli2api.git
+          else
+            echo "✅ 上游远程仓库已存在"
           fi
           
+          # 获取上游更新
+          echo "📥 获取上游更新..."
+          git fetch upstream master
+          
+          # 检查是否需要更新
+          LOCAL_COMMIT=$(git rev-parse HEAD)
+          UPSTREAM_COMMIT=$(git rev-parse upstream/master)
+          
+          if [ "$LOCAL_COMMIT" = "$UPSTREAM_COMMIT" ]; then
+            echo "✅ 仓库已是最新版本，无需同步"
+            exit 0
+          fi
+          
+          echo "🔍 检测到上游更新，开始同步..."
+          echo "本地提交: $LOCAL_COMMIT"
+          echo "上游提交: $UPSTREAM_COMMIT"
+          
+          # 配置 sparse-checkout 来保护 .github 目录
+          echo "🛡️ 配置 sparse-checkout 保护 .github 目录..."
+          git config core.sparseCheckout true
+          
+          # 设置 sparse-checkout 规则：包含所有文件但排除 .github 目录
+          cat > .git/info/sparse-checkout << 'EOF'
+          /*
+          !/.github/
+          EOF
+          
+          # 创建一个临时分支进行合并操作
+          echo "🌿 创建临时分支..."
+          git checkout -b temp-sync-$(date +%Y%m%d-%H%M%S)
+          
+          # 使用 sparse-checkout 读取上游更改
+          echo "📝 应用上游更改 (排除 .github 目录)..."
+          git read-tree -u upstream/master
+          
+          # 添加所有更改到暂存区
+          git add .
+          
+          # 检查是否有更改需要提交
+          if git diff --staged --quiet; then
+            echo "ℹ️ 没有检测到文件更改"
+          else
+            echo "💾 提交同步更改..."
+            git commit -m "sync: 同步上游仓库更改 (保护 .github 目录)"
+          fi
+          
+          # 切换回 master 分支
+          echo "🔄 切换回 master 分支..."
+          git checkout master
+          
+          # 合并临时分支的更改
+          echo "🔗 合并同步更改..."
+          git merge temp-sync-$(date +%Y%m%d-%H%M%S) --no-edit
+          
           # 清理临时分支
-          git branch -D temp-sync-branch 2>/dev/null || echo "临时分支清理完成"
+          echo "🧹 清理临时分支..."
+          git branch -D temp-sync-$(date +%Y%m%d-%H%M%S)
+          
+          # 禁用 sparse-checkout
+          echo "🔧 恢复正常的 checkout 模式..."
+          git config core.sparseCheckout false
+          
+          # 验证关键文件
+          echo "✅ 验证关键文件完整性..."
+          if [ ! -f ".github/workflows/sync-and-build.yml" ]; then
+            echo "❌ 错误: 工作流文件丢失!"
+            exit 1
+          fi
+          
+          echo "📊 最终状态检查:"
+          git status --porcelain
           
           # 推送更新
+          echo "🚀 推送更新到远程仓库..."
           git push origin master
           
-          echo "🎉 智能同步完成，.github 目录已受保护"
+          echo "🎉 同步完成! .github 目录已受到保护"
 
   # 作业二：构建并推送 Docker 镜像
   build_and_push:
