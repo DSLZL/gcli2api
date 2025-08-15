@@ -81,7 +81,7 @@ jobs:
           echo "📝 同步上游文件 (排除 .github 目录)..."
           
           # 获取上游仓库中所有文件列表，但排除 .github 目录和 Dockerfile
-          git ls-tree -r --name-only upstream/master | grep -v -E '^\.github/|^Dockerfile$' > /tmp/files_to_sync
+          git ls-tree -r --name-only upstream/master | grep -v -E '^\.github/|^Dockerfile$|^docker-compose\.yml$' > /tmp/files_to_sync
           
           if [ -s /tmp/files_to_sync ]; then
             # 逐个checkout上游文件
