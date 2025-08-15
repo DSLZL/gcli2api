@@ -1,0 +1,127 @@
+name: Sync Fork and Build Docker Image
+
+on:
+  # 1. 定时触发：每天 UTC 时间 0 点执行一次同步
+  schedule:
+    - cron: '0 0 * * *'
+  
+  # 2. 手动触发：允许您在 GitHub Actions 页面手动运行此工作流
+  workflow_dispatch:
+
+  # 3. Push 触发：当有代码推送到 master 分支时，触发构建和推送作业
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - 'README.md'
+      - '.gitignore'
+
+jobs:
+  # 作业一：同步上游仓库
+  sync_fork:
+    runs-on: ubuntu-latest
+    # 仅在定时或手动触发时运行此作业
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@v4
+        with:
+          # 需要一个有写权限的 PAT (Personal Access Token) 来推送更新
+          token: ${{ secrets.PAT_TOKEN }}
+
+      - name: Backup workflow files
+        run: |
+          # 备份 .github 目录到临时位置
+          cp -r .github /tmp/github-backup || echo "备份失败，可能是首次运行"
+
+      - name: Smart sync with upstream (保护 .github 目录)
+        run: |
+          # 配置 Git 用户信息
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          
+          # 添加上游远程仓库
+          git remote add upstream https://github.com/su-kaka/gcli2api.git 2>/dev/null || echo "上游远程仓库已存在"
+          
+          # 拉取上游更新
+          git fetch upstream master
+          
+          # 切换到临时分支进行合并
+          git checkout -b temp-sync-branch
+          
+          # 将上游的变更合并到临时分支，但排除 .github 目录
+          git merge upstream/master --no-edit --allow-unrelated-histories || {
+            echo "合并冲突，尝试强制同步除 .github 外的所有文件"
+            
+            # 重置到上游状态，但保护 .github 目录
+            git reset --hard upstream/master
+            
+            # 恢复 .github 目录
+            if [ -d "/tmp/github-backup" ]; then
+              cp -r /tmp/github-backup .github
+              echo "✅ 已恢复 .github 目录"
+            fi
+          }
+          
+          # 切换回 master 分支并应用更改
+          git checkout master
+          git merge temp-sync-branch --no-edit
+          
+          # 确保 .github 目录存在并包含工作流
+          if [ ! -f ".github/workflows/sync-and-build.yml" ]; then
+            echo "⚠️ 工作流文件丢失，正在恢复..."
+            mkdir -p .github/workflows
+            if [ -f "/tmp/github-backup/workflows/sync-and-build.yml" ]; then
+              cp /tmp/github-backup/workflows/sync-and-build.yml .github/workflows/
+              echo "✅ 已从备份恢复工作流文件"
+            fi
+          fi
+          
+          # 清理临时分支
+          git branch -D temp-sync-branch 2>/dev/null || echo "临时分支清理完成"
+          
+          # 推送更新
+          git push origin master
+          
+          echo "🎉 智能同步完成，.github 目录已受保护"
+
+  # 作业二：构建并推送 Docker 镜像
+  build_and_push:
+    runs-on: ubuntu-latest
+    # 仅在代码被推送到 master 分支时运行此作业
+    # (同步作业成功后会产生一次 push，从而触发此作业)
+    if: github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: write # 需要 'packages' 的写权限来推送镜像到 GHCR
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to the GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }} # 自动获取您的 GitHub 用户名
+          password: ${{ secrets.GITHUB_TOKEN }}   # 使用 GitHub 自动提供的 GITHUB_TOKEN
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/gcli2api
+          tags: |
+            # 为镜像添加两个标签:
+            # 1. 具体版本号 (commit SHA)
+            type=sha
+            # 2. 当推送到默认分支 (master) 时，添加 'latest' 标签
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
