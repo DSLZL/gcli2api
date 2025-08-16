@@ -22,6 +22,7 @@ from .config import (
 )
 from .utils import get_user_agent, get_client_metadata
 from log import log
+import re
 
 class CredentialManager:
     """High-performance credential manager with call-based rotation and caching."""
@@ -125,6 +126,56 @@ class CredentialManager:
                     cred_state.pop("cd_until", None)
                     log.info(f"Cleared expired CD status for {filename}")
 
+    def _is_quota_exhausted_error(self, response_content: str) -> bool:
+        """检查响应内容是否为配额耗尽错误（更精确的判断）"""
+        if not response_content:
+            return False
+        
+        try:
+            # 尝试解析JSON响应
+            response_data = json.loads(response_content)
+            
+            # 检查是否有error字段
+            if "error" not in response_data:
+                return False
+            
+            error = response_data["error"]
+            
+            # 检查错误码是否为429
+            if error.get("code") != 429:
+                return False
+            
+            # 检查状态是否为RESOURCE_EXHAUSTED
+            if error.get("status") != "RESOURCE_EXHAUSTED":
+                return False
+            
+            # 检查错误消息中是否包含特定的配额相关关键词
+            message = error.get("message", "")
+            
+            # 检查是否包含关键的配额指标
+            quota_patterns = [
+                r"Quota exceeded for quota metric.*StreamGenerateContent Requests",
+                r"limit.*StreamGenerateContent Requests per day per user per tier",
+                r"project_number:\d+",  # 包含项目编号的错误
+                r"consumer.*project_number"
+            ]
+            
+            for pattern in quota_patterns:
+                if re.search(pattern, message, re.IGNORECASE):
+                    log.debug(f"Found quota exhaustion pattern: {pattern} in message: {message[:100]}...")
+                    return True
+            
+            log.debug(f"429 error but no quota exhaustion patterns found in message: {message[:100]}...")
+            return False
+            
+        except json.JSONDecodeError:
+            # 如果不是JSON，回退到关键词检查（保持向后兼容）
+            log.debug("Response is not valid JSON, falling back to keyword check")
+            return "1500" in response_content
+        except Exception as e:
+            log.warning(f"Error parsing response for quota check: {e}")
+            return False
+    
     def _get_cred_state(self, filename: str) -> Dict[str, Any]:
         """获取指定凭证文件的状态"""
         # 标准化路径以确保一致性
@@ -169,16 +220,26 @@ class CredentialManager:
             if status_code not in cred_state["error_codes"]:
                 cred_state["error_codes"].append(status_code)
             
-            # 改进的CD机制：需要429状态码且响应内容包含"1500"关键词
-            if status_code == 429 and "1500" in response_content:
+            # 改进的CD机制：精确判断是否为配额耗尽错误
+            if status_code == 429 and self._is_quota_exhausted_error(response_content):
                 # 设置CD状态直到下一个UTC 08:00
                 now = datetime.now(timezone.utc)
                 today_8am = now.replace(hour=8, minute=0, second=0, microsecond=0)
                 next_8am = today_8am if now < today_8am else today_8am + timedelta(days=1)
                 cred_state["cd_until"] = next_8am.isoformat()
-                log.warning(f"Set CD status for {normalized_filename} until {next_8am} (429 + '1500' keyword)")
+                log.warning(f"[CD_SET] Set CD status for {normalized_filename} until {next_8am} (429 + quota exhausted)")
+                
+                # 记录更详细的错误信息
+                try:
+                    error_data = json.loads(response_content)
+                    error_message = error_data.get("error", {}).get("message", "")
+                    log.info(f"Quota exhausted for {os.path.basename(normalized_filename)}: {error_message[:200]}...")
+                except:
+                    log.info(f"Quota exhausted for {os.path.basename(normalized_filename)} (legacy format)")
             elif status_code == 429:
-                log.info(f"Got 429 error for {os.path.basename(normalized_filename)} but no '1500' keyword in response, no CD set")
+                log.info(f"Got 429 error for {os.path.basename(normalized_filename)} but not a quota exhaustion error, no CD set")
+                # 记录非配额耗尽的429错误内容供调试
+                log.debug(f"429 error response content: {response_content[:300]}...")
             
             # 自动封禁功能
             auto_ban_enabled = get_auto_ban_enabled()
@@ -206,7 +267,7 @@ class CredentialManager:
             # 只有聊天内容生成API成功才清除错误码，其他API不清除
             if api_type == "chat_content":
                 cred_state["error_codes"] = []
-                log.info(f"Cleared error codes for {normalized_filename} due to successful chat content generation")
+                log.debug(f"Cleared error codes for {normalized_filename} due to successful chat content generation")
             
             cred_state["last_success"] = datetime.now(timezone.utc).isoformat()
             
@@ -219,7 +280,13 @@ class CredentialManager:
             return False
         
         cd_until = datetime.fromisoformat(cred_state["cd_until"])
-        return datetime.now(timezone.utc) < cd_until
+        is_in_cd = datetime.now(timezone.utc) < cd_until
+        
+        # 调试日志
+        if is_in_cd:
+            log.debug(f"[CD_CHECK] {os.path.basename(filename)} is in CD until {cd_until}")
+        
+        return is_in_cd
 
     def is_cred_disabled(self, filename: str) -> bool:
         """检查凭证是否被禁用"""
@@ -287,8 +354,19 @@ class CredentialManager:
         # 过滤掉被禁用和CD状态的文件
         self._credential_files = []
         for filename in all_files:
-            if not self.is_cred_disabled(filename) and not self.is_cred_in_cd(filename):
+            is_disabled = self.is_cred_disabled(filename)
+            is_in_cd = self.is_cred_in_cd(filename)
+            
+            if not is_disabled and not is_in_cd:
                 self._credential_files.append(filename)
+            else:
+                # 记录被过滤的文件信息供调试
+                status_info = []
+                if is_disabled:
+                    status_info.append("disabled")
+                if is_in_cd:
+                    status_info.append("in_cd")
+                log.debug(f"Filtered out {os.path.basename(filename)}: {', '.join(status_info)}")
         
         new_files = set(self._credential_files)
         
@@ -317,7 +395,8 @@ class CredentialManager:
         if not self._credential_files:
             log.warning("No available credential files found")
         else:
-            log.info(f"Found {len(self._credential_files)} available credential files")
+            available_files = [os.path.basename(f) for f in self._credential_files]
+            log.info(f"Found {len(self._credential_files)} available credential files: {available_files}")
 
     async def _sync_state_with_files(self, current_files: List[str]):
         """同步状态文件与实际文件"""
@@ -488,9 +567,22 @@ class CredentialManager:
             self._cached_project_id = None
             self._call_count = 0  # Reset call count
             
+            # 重新发现可用凭证文件（过滤掉CD和禁用的文件）
+            await self._discover_credential_files()
+            
+            # 如果没有可用凭证，早期返回
+            if not self._credential_files:
+                log.error("No available credentials to rotate to")
+                return
+            
             # Move to next credential
             self._current_credential_index = (self._current_credential_index + 1) % len(self._credential_files)
-            log.info(f"Rotated to credential index {self._current_credential_index}")
+            log.info(f"Rotated to credential index {self._current_credential_index}, total available: {len(self._credential_files)}")
+            
+            # 记录当前使用的文件名称供调试
+            if self._credential_files:
+                current_file = self._credential_files[self._current_credential_index]
+                log.info(f"Now using credential: {os.path.basename(current_file)}")
 
     def get_user_project_id(self, creds: Credentials) -> str:
         """Get user project ID from credentials."""
@@ -618,10 +710,21 @@ class CredentialManager:
         cred_state = self._get_cred_state(filename)
         log.info(f"[TEST] After test, credential state: {cred_state}")
     
-    async def test_cd_mechanism(self, filename: str, response_content: str = "error 1500 quota exceeded"):
+    async def test_cd_mechanism(self, filename: str, response_content: str = None):
         """测试CD机制（仅用于调试）"""
+        if response_content is None:
+            # 使用真实的配额耗尽错误格式
+            response_content = '''{
+  "error": {
+    "code": 429,
+    "message": "Quota exceeded for quota metric 'StreamGenerateContent Requests' and limit 'StreamGenerateContent Requests per day per user per tier' of service 'cloudcode-pa.googleapis.com' for consumer 'project_number:681255809395'.",
+    "status": "RESOURCE_EXHAUSTED"
+  }
+}'''
+        
         log.info(f"[TEST] Testing CD mechanism for file {filename}")
         log.info(f"[TEST] Response content: {response_content}")
+        log.info(f"[TEST] Is quota exhausted: {self._is_quota_exhausted_error(response_content)}")
         await self.record_error(filename, 429, response_content)
         
         # 检查状态

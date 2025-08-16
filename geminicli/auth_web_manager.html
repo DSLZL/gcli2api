@@ -335,6 +335,99 @@
             gap: 10px;
             flex-wrap: wrap;
         }
+        
+        /* 文件管理新增样式 */
+        .stats-container {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .stat-item {
+            background: linear-gradient(45deg, #f8f9fa, #e9ecef);
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 12px 20px;
+            text-align: center;
+            min-width: 120px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .stat-number {
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+            display: block;
+        }
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+            margin-top: 4px;
+        }
+        .stat-item.total { border-left: 4px solid #007bff; }
+        .stat-item.normal { border-left: 4px solid #28a745; }
+        .stat-item.cd { border-left: 4px solid #ffc107; }
+        .stat-item.disabled { border-left: 4px solid #6c757d; }
+        
+        .filter-container {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .filter-select {
+            padding: 8px 12px;
+            border: 2px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            background-color: white;
+        }
+        .filter-select:focus {
+            border-color: #4285f4;
+            outline: none;
+        }
+        
+        .pagination-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+        .pagination-info {
+            color: #666;
+            font-size: 14px;
+        }
+        .pagination-btn {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            background: white;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .pagination-btn:hover:not(:disabled) {
+            background: #f8f9fa;
+            border-color: #4285f4;
+        }
+        .pagination-btn:disabled {
+            background: #f5f5f5;
+            color: #ccc;
+            cursor: not-allowed;
+        }
+        .pagination-btn.active {
+            background: #4285f4;
+            color: white;
+            border-color: #4285f4;
+        }
+        .page-size-select {
+            padding: 6px 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
         .refresh-btn {
             background-color: #17a2b8;
             color: white;
@@ -439,27 +532,22 @@
 
             <!-- OAuth认证标签页 -->
             <div id="oauthTab" class="tab-content active">
-                <!-- API 启用提醒 -->
-                <div class="status info" style="margin-bottom: 20px;">
-                    <strong>⚠️ 重要：在开始认证前，请先为您的项目启用以下API服务：</strong>
-                    <ol style="margin: 10px 0; padding-left: 20px;">
-                        <li>
-                            <strong>Gemini Cloud Assist API</strong>
-                            <br>
-                            <a href="https://accounts.google.com/v3/signin/identifier?continue=https%3A%2F%2Fconsole.cloud.google.com%2Fapis%2Fapi%2Fgeminicloudassist.googleapis.com&followup=https%3A%2F%2Fconsole.cloud.google.com%2Fapis%2Fapi%2Fgeminicloudassist.googleapis.com&ifkv=AdBytiMNy-Hm3hnPgFWYjLYkPGdKcOlVpAqeSe13FPLF0otQksaGiPmr6UFIWIXMbPEmaVQ8VjphHQ&osid=1&passive=1209600&service=cloudconsole&flowName=GlifWebSignIn&flowEntry=ServiceLogin&dsh=S-1507562391%3A1750869291503463" target="_blank" style="color: #4285f4; text-decoration: none;">点击这里启用 Gemini Cloud Assist API</a>
-                        </li>
-                        <li>
-                            <strong>Cloud AI Companion API</strong>
-                            <br>
-                            <a href="https://accounts.google.com/v3/signin/identifier?continue=https%3A%2F%2Fconsole.cloud.google.com%2Fapis%2Fapi%2Fcloudaicompanion.googleapis.com&followup=https%3A%2F%2Fconsole.cloud.google.com%2Fapis%2Fapi%2Fcloudaicompanion.googleapis.com&ifkv=AdBytiOqBpXdvQKqAFVlUqM4caKHny2P-Fdd3Wog-Zra1x-Ok_KLiV5XTW7cshP_HJvfXAiP3amyog&osid=1&passive=1209600&service=cloudconsole&flowName=GlifWebSignIn&flowEntry=ServiceLogin&dsh=S892092256%3A1750869338491514" target="_blank" style="color: #4285f4; text-decoration: none;">点击这里启用 Cloud AI Companion API</a>
-                        </li>
-                    </ol>
-                    <p style="margin: 10px 0; color: #d73502;"><strong>注意：</strong>如果未启用这些API，OAuth认证过程将会失败。请确保在输入Project ID前已经完成API启用操作。</p>
+                <!-- API 自动启用说明 -->
+                <div class="status success" style="margin-bottom: 20px;">
+                    <strong>✨ 自动化优化：</strong> 系统现在会在认证成功后自动为您的项目启用必需的API服务
+                    <ul style="margin: 10px 0; padding-left: 20px;">
+                        <li><strong>Gemini Cloud Assist API</strong></li>
+                        <li><strong>Gemini for Google Cloud API</strong></li>
+                    </ul>
+                    <p style="margin: 10px 0; color: #155724;"><strong>说明：</strong>无需手动启用API，系统会自动处理这些配置步骤，让认证流程更加顺畅。</p>
                 </div>
 
                 <div class="form-group">
-                    <label for="projectId">Google Cloud Project ID:</label>
-                    <input type="text" id="projectId" placeholder="输入你的 Google Cloud Project ID" />
+                    <label for="projectId">Google Cloud Project ID (可选):</label>
+                    <input type="text" id="projectId" placeholder="留空将尝试自动检测，或手动输入项目ID" />
+                    <small style="color: #666; font-size: 12px; margin-top: 5px; display: block;">
+                        💡 提示：如果你不懂这是什么，可以留空此字段让系统自动检测项目ID
+                    </small>
                 </div>
                 
                 <button class="btn" id="getAuthBtn" onclick="startAuth()">获取认证链接</button>
@@ -523,14 +611,59 @@
                 <h3>凭证文件管理</h3>
                 <p>管理所有认证文件，查看状态和执行操作</p>
                 
+                <!-- 状态统计 -->
+                <div class="stats-container" id="statsContainer">
+                    <div class="stat-item total">
+                        <span class="stat-number" id="statTotal">0</span>
+                        <span class="stat-label">总计</span>
+                    </div>
+                    <div class="stat-item normal">
+                        <span class="stat-number" id="statNormal">0</span>
+                        <span class="stat-label">正常</span>
+                    </div>
+                    <div class="stat-item cd">
+                        <span class="stat-number" id="statCd">0</span>
+                        <span class="stat-label">CD中</span>
+                    </div>
+                    <div class="stat-item disabled">
+                        <span class="stat-number" id="statDisabled">0</span>
+                        <span class="stat-label">禁用</span>
+                    </div>
+                </div>
+                
                 <div class="manage-actions">
                     <button class="refresh-btn" onclick="refreshCredsStatus()">刷新状态</button>
                     <button class="download-all-btn" onclick="downloadAllCreds()">打包下载所有文件</button>
                 </div>
                 
+                <!-- 筛选和分页控件 -->
+                <div class="filter-container">
+                    <label for="statusFilter">状态筛选：</label>
+                    <select id="statusFilter" class="filter-select" onchange="applyFilters()">
+                        <option value="all">全部</option>
+                        <option value="normal">正常</option>
+                        <option value="cd">CD中</option>
+                        <option value="disabled">禁用</option>
+                    </select>
+                    
+                    <label for="pageSizeSelect">每页显示：</label>
+                    <select id="pageSizeSelect" class="page-size-select" onchange="changePageSize()">
+                        <option value="20">20</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                    </select>
+                </div>
+                
                 <div id="credsListSection">
                     <div class="loading" id="credsLoading">正在加载凭证文件...</div>
                     <div id="credsList"></div>
+                    
+                    <!-- 分页控件 -->
+                    <div class="pagination-container" id="paginationContainer" style="display: none;">
+                        <button class="pagination-btn" id="prevPageBtn" onclick="changePage(-1)">上一页</button>
+                        <div class="pagination-info" id="paginationInfo">第 1 页，共 1 页</div>
+                        <button class="pagination-btn" id="nextPageBtn" onclick="changePage(1)">下一页</button>
+                    </div>
                 </div>
             </div>
 
@@ -622,6 +755,18 @@
         let selectedFiles = [];
         let authToken = '';
         let credsData = {};
+        
+        // 分页和筛选相关变量
+        let filteredCredsData = {};
+        let currentPage = 1;
+        let pageSize = 20;
+        let currentFilter = 'all';
+        let statsData = {
+            total: 0,
+            normal: 0,
+            cd: 0,
+            disabled: 0
+        };
 
         function showStatus(message, type = 'info') {
             console.log('showStatus called:', message, type);
@@ -711,21 +856,26 @@
 
         async function startAuth() {
             const projectId = document.getElementById('projectId').value.trim();
-            if (!projectId) {
-                showStatus('请输入 Project ID', 'error');
-                return;
-            }
-
-            currentProjectId = projectId;
+            // 项目ID现在是可选的
+            currentProjectId = projectId || null;
+            
             const btn = document.getElementById('getAuthBtn');
             btn.disabled = true;
             btn.textContent = '正在获取认证链接...';
 
             try {
+                const requestBody = {};
+                if (projectId) {
+                    requestBody.project_id = projectId;
+                    showStatus('使用指定的项目ID生成认证链接...', 'info');
+                } else {
+                    showStatus('将尝试自动检测项目ID，正在生成认证链接...', 'info');
+                }
+
                 const response = await fetch('/auth/start', {
                     method: 'POST',
                     headers: getAuthHeaders(),
-                    body: JSON.stringify({ project_id: projectId })
+                    body: JSON.stringify(requestBody)
                 });
 
                 const data = await response.json();
@@ -734,7 +884,12 @@
                     document.getElementById('authUrl').href = data.auth_url;
                     document.getElementById('authUrl').textContent = data.auth_url;
                     document.getElementById('authUrlSection').classList.remove('hidden');
-                    showStatus('请点击认证链接完成授权', 'info');
+                    
+                    if (data.auto_project_detection) {
+                        showStatus('认证链接已生成（将在认证完成后自动检测项目ID），请点击链接完成授权', 'info');
+                    } else {
+                        showStatus(`认证链接已生成（项目ID: ${data.detected_project_id}），请点击链接完成授权`, 'info');
+                    }
                     authInProgress = true;
                 } else {
                     showStatus(`错误: ${data.error || '获取认证链接失败'}`, 'error');
@@ -760,10 +915,15 @@
             try {
                 showStatus('正在等待OAuth回调，这可能需要一些时间...', 'info');
                 
+                const requestBody = {};
+                if (currentProjectId) {
+                    requestBody.project_id = currentProjectId;
+                }
+                
                 const response = await fetch('/auth/callback', {
                     method: 'POST',
                     headers: getAuthHeaders(),
-                    body: JSON.stringify({ project_id: currentProjectId })
+                    body: JSON.stringify(requestBody)
                 });
 
                 const data = await response.json();
@@ -771,12 +931,55 @@
                 if (response.ok) {
                     document.getElementById('credentialsContent').textContent = JSON.stringify(data.credentials, null, 2);
                     document.getElementById('credentialsSection').classList.remove('hidden');
-                    showStatus(`✅ 认证成功！文件已保存到: ${data.file_path}`, 'success');
+                    
+                    if (data.auto_detected_project) {
+                        showStatus(`✅ 认证成功！项目ID已自动检测为: ${data.credentials.project_id}，文件已保存到: ${data.file_path}`, 'success');
+                    } else {
+                        showStatus(`✅ 认证成功！文件已保存到: ${data.file_path}`, 'success');
+                    }
+                    
                     authInProgress = false;
                 } else {
-                    showStatus(`❌ 错误: ${data.error || '获取认证文件失败'}`, 'error');
-                    if (data.error && data.error.includes('未接收到授权回调')) {
-                        showStatus('提示：请确保已完成浏览器中的OAuth认证，并看到了"OAuth authentication successful"页面', 'info');
+                    // 检查是否需要项目选择
+                    if (data.requires_project_selection && data.available_projects) {
+                        let projectOptions = "请选择一个项目：\n\n";
+                        data.available_projects.forEach((project, index) => {
+                            projectOptions += `${index + 1}. ${project.name} (${project.projectId})\n`;
+                        });
+                        projectOptions += `\n请输入序号 (1-${data.available_projects.length}):`;
+                        
+                        const selection = prompt(projectOptions);
+                        const projectIndex = parseInt(selection) - 1;
+                        
+                        if (projectIndex >= 0 && projectIndex < data.available_projects.length) {
+                            const selectedProject = data.available_projects[projectIndex];
+                            currentProjectId = selectedProject.projectId;
+                            btn.textContent = '重新尝试获取认证文件';
+                            showStatus(`使用选择的项目 ${selectedProject.name} (${selectedProject.projectId}) 重新尝试...`, 'info');
+                            setTimeout(() => getCredentials(), 1000);
+                            return;
+                        } else {
+                            showStatus('无效的选择，请重新开始认证', 'error');
+                        }
+                    }
+                    // 检查是否需要手动输入项目ID
+                    else if (data.requires_manual_project_id) {
+                        const userProjectId = prompt('无法自动检测项目ID，请手动输入您的Google Cloud项目ID:');
+                        if (userProjectId && userProjectId.trim()) {
+                            // 重新尝试，使用用户输入的项目ID
+                            currentProjectId = userProjectId.trim();
+                            btn.textContent = '重新尝试获取认证文件';
+                            showStatus('使用手动输入的项目ID重新尝试...', 'info');
+                            setTimeout(() => getCredentials(), 1000);
+                            return;
+                        } else {
+                            showStatus('需要项目ID才能完成认证，请重新开始并输入正确的项目ID', 'error');
+                        }
+                    } else {
+                        showStatus(`❌ 错误: ${data.error || '获取认证文件失败'}`, 'error');
+                        if (data.error && data.error.includes('未接收到授权回调')) {
+                            showStatus('提示：请确保已完成浏览器中的OAuth认证，并看到了"OAuth authentication successful"页面', 'info');
+                        }
                     }
                 }
             } catch (error) {
@@ -947,14 +1150,16 @@
                 if (response.ok) {
                     credsData = data.creds;
                     
-                    // 调试：检查特定文件的状态
-                    for (const [fullPath, credInfo] of Object.entries(credsData)) {
-                        if (credInfo.filename.includes('atomic-affinity')) {
-                            console.log(`File ${credInfo.filename} status:`, credInfo.status);
-                        }
-                    }
+                    // 计算统计数据
+                    calculateStats();
                     
-                    renderCredsList();
+                    // 更新统计显示
+                    updateStatsDisplay();
+                    
+                    // 应用筛选并显示第一页
+                    currentPage = 1;
+                    applyFilters();
+                    
                     showStatus(`已加载 ${Object.keys(credsData).length} 个凭证文件`, 'success');
                 } else {
                     showStatus(`加载失败: ${data.detail || data.error || '未知错误'}`, 'error');
@@ -967,19 +1172,138 @@
             }
         }
 
+        // 计算统计数据
+        function calculateStats() {
+            statsData = {
+                total: 0,
+                normal: 0,
+                cd: 0,
+                disabled: 0
+            };
+            
+            for (const [fullPath, credInfo] of Object.entries(credsData)) {
+                statsData.total++;
+                
+                if (credInfo.status.disabled) {
+                    statsData.disabled++;
+                } else if (credInfo.status.in_cd) {
+                    statsData.cd++;
+                } else {
+                    statsData.normal++;
+                }
+            }
+        }
+        
+        // 更新统计显示
+        function updateStatsDisplay() {
+            document.getElementById('statTotal').textContent = statsData.total;
+            document.getElementById('statNormal').textContent = statsData.normal;
+            document.getElementById('statCd').textContent = statsData.cd;
+            document.getElementById('statDisabled').textContent = statsData.disabled;
+        }
+        
+        // 应用筛选
+        function applyFilters() {
+            const statusFilter = document.getElementById('statusFilter').value;
+            currentFilter = statusFilter;
+            filteredCredsData = {};
+            
+            for (const [fullPath, credInfo] of Object.entries(credsData)) {
+                let shouldInclude = false;
+                
+                switch (statusFilter) {
+                    case 'all':
+                        shouldInclude = true;
+                        break;
+                    case 'normal':
+                        shouldInclude = !credInfo.status.disabled && !credInfo.status.in_cd;
+                        break;
+                    case 'cd':
+                        shouldInclude = credInfo.status.in_cd;
+                        break;
+                    case 'disabled':
+                        shouldInclude = credInfo.status.disabled;
+                        break;
+                }
+                
+                if (shouldInclude) {
+                    filteredCredsData[fullPath] = credInfo;
+                }
+            }
+            
+            currentPage = 1;
+            renderCredsList();
+            updatePagination();
+        }
+        
+        // 获取当前页数据
+        function getCurrentPageData() {
+            const filteredEntries = Object.entries(filteredCredsData);
+            const startIndex = (currentPage - 1) * pageSize;
+            const endIndex = startIndex + pageSize;
+            return filteredEntries.slice(startIndex, endIndex);
+        }
+        
+        // 获取总页数
+        function getTotalPages() {
+            return Math.ceil(Object.keys(filteredCredsData).length / pageSize);
+        }
+        
+        // 渲染凭证列表
         function renderCredsList() {
             const credsList = document.getElementById('credsList');
             credsList.innerHTML = '';
             
-            if (Object.keys(credsData).length === 0) {
-                credsList.innerHTML = '<p style="text-align: center; color: #666;">暂无凭证文件</p>';
+            const currentPageData = getCurrentPageData();
+            
+            if (currentPageData.length === 0) {
+                const message = Object.keys(credsData).length === 0 ? 
+                    '暂无凭证文件' : '当前筛选条件下暂无数据';
+                credsList.innerHTML = `<p style="text-align: center; color: #666;">${message}</p>`;
+                document.getElementById('paginationContainer').style.display = 'none';
                 return;
             }
             
-            for (const [fullPath, credInfo] of Object.entries(credsData)) {
+            for (const [fullPath, credInfo] of currentPageData) {
                 const card = createCredCard(fullPath, credInfo);
                 credsList.appendChild(card);
             }
+            
+            document.getElementById('paginationContainer').style.display = getTotalPages() > 1 ? 'flex' : 'none';
+        }
+        
+        // 更新分页信息
+        function updatePagination() {
+            const totalPages = getTotalPages();
+            const totalItems = Object.keys(filteredCredsData).length;
+            const startItem = (currentPage - 1) * pageSize + 1;
+            const endItem = Math.min(currentPage * pageSize, totalItems);
+            
+            document.getElementById('paginationInfo').textContent = 
+                `第 ${currentPage} 页，共 ${totalPages} 页 (显示 ${startItem}-${endItem}，共 ${totalItems} 项)`;
+            
+            document.getElementById('prevPageBtn').disabled = currentPage <= 1;
+            document.getElementById('nextPageBtn').disabled = currentPage >= totalPages;
+        }
+        
+        // 切换页面
+        function changePage(direction) {
+            const totalPages = getTotalPages();
+            const newPage = currentPage + direction;
+            
+            if (newPage >= 1 && newPage <= totalPages) {
+                currentPage = newPage;
+                renderCredsList();
+                updatePagination();
+            }
+        }
+        
+        // 改变每页显示数量
+        function changePageSize() {
+            pageSize = parseInt(document.getElementById('pageSizeSelect').value);
+            currentPage = 1;
+            renderCredsList();
+            updatePagination();
         }
 
         function createCredCard(fullPath, credInfo) {

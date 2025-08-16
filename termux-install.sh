@@ -1,9 +1,17 @@
 pkg update && pkg upgrade -y
-pkg install rust build-essential python git ninja clang cmake uv nodejs binutils-is-llvm -y
+pkg install python git uv nodejs -y
 npm install pm2 -g
-git clone https://github.com/su-kaka/gcli2api.git
-cd ./gcli2api
+if [ -f "./web.py" ]; then
+    # Already in target directory; skip clone and cd
+    :
+elif [ -f "./gcli2api/web.py" ]; then
+    cd ./gcli2api
+else
+    git clone https://github.com/su-kaka/gcli2api.git
+    cd ./gcli2api
+fi
 git pull
-uv sync
+uv init
+uv add -r requirements-termux.txt
 source .venv/bin/activate
-pm2 start python3 web.py
+pm2 start .venv/bin/python --name web -- web.py

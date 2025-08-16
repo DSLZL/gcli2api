@@ -5,7 +5,7 @@ Web路由模块 - 处理认证相关的HTTP请求
 import os
 import logging
 import json
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Depends, File, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from .auth_api import (
     create_auth_url, get_auth_status,
     verify_password, generate_auth_token, verify_auth_token,
-    batch_upload_credentials, asyncio_complete_auth_flow,
+    batch_upload_credentials, asyncio_complete_auth_flow, auto_detect_project_id
 )
 from .credential_manager import CredentialManager
 
@@ -34,10 +34,10 @@ class LoginRequest(BaseModel):
     password: str
 
 class AuthStartRequest(BaseModel):
-    project_id: str
+    project_id: Optional[str] = None  # 现在是可选的
 
 class AuthCallbackRequest(BaseModel):
-    project_id: str
+    project_id: Optional[str] = None  # 现在是可选的
 
 class CredFileActionRequest(BaseModel):
     filename: str
@@ -59,7 +59,7 @@ async def serve_auth_page():
     """提供认证页面"""
     try:
         # 读取HTML文件
-        html_file_path = os.path.join(os.path.dirname(__file__), "auth_web_manager.html")
+        html_file_path = "./geminicli/auth_web_manager.html"
         with open(html_file_path, "r", encoding="utf-8") as f:
             html_content = f.read()
         return HTMLResponse(content=html_content)
@@ -88,19 +88,29 @@ async def login(request: LoginRequest):
 
 @router.post("/auth/start")
 async def start_auth(request: AuthStartRequest, token: str = Depends(verify_token)):
-    """开始认证流程"""
+    """开始认证流程，支持自动检测项目ID"""
     try:
-        if not request.project_id:
-            raise HTTPException(status_code=400, detail="Project ID 不能为空")
+        # 如果没有提供项目ID，尝试自动检测
+        project_id = request.project_id
+        if not project_id:
+            logging.info("未提供项目ID，尝试自动检测...")
+            try:
+                project_id = await auto_detect_project_id()
+                if project_id:
+                    logging.info(f"自动检测到项目ID: {project_id}")
+            except Exception as e:
+                logging.debug(f"自动检测项目ID失败: {e}")
         
         # 使用认证令牌作为用户会话标识
         user_session = token if token else None
-        result = create_auth_url(request.project_id, user_session)
+        result = create_auth_url(project_id, user_session)
         
         if result['success']:
             return JSONResponse(content={
                 "auth_url": result['auth_url'],
-                "state": result['state']
+                "state": result['state'],
+                "auto_project_detection": result.get('auto_project_detection', False),
+                "detected_project_id": result.get('detected_project_id')
             })
         else:
             raise HTTPException(status_code=500, detail=result['error'])
@@ -114,24 +124,46 @@ async def start_auth(request: AuthStartRequest, token: str = Depends(verify_toke
 
 @router.post("/auth/callback")
 async def auth_callback(request: AuthCallbackRequest, token: str = Depends(verify_token)):
-    """处理认证回调（异步等待）"""
+    """处理认证回调，支持自动检测项目ID"""
     try:
-        if not request.project_id:
-            raise HTTPException(status_code=400, detail="Project ID 不能为空")
+        # 项目ID现在是可选的，在回调处理中进行自动检测
+        project_id = request.project_id
         
         # 使用认证令牌作为用户会话标识
         user_session = token if token else None
         # 异步等待OAuth回调完成
-        result = await asyncio_complete_auth_flow(request.project_id, user_session)
+        result = await asyncio_complete_auth_flow(project_id, user_session)
         
         if result['success']:
             return JSONResponse(content={
                 "credentials": result['credentials'],
                 "file_path": result['file_path'],
-                "message": "认证成功，凭证已保存"
+                "message": "认证成功，凭证已保存",
+                "auto_detected_project": result.get('auto_detected_project', False)
             })
         else:
-            raise HTTPException(status_code=400, detail=result['error'])
+            # 如果需要手动项目ID或项目选择，在响应中标明
+            if result.get('requires_manual_project_id'):
+                # 使用JSON响应而不是HTTPException来传递复杂数据
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "error": result['error'],
+                        "requires_manual_project_id": True
+                    }
+                )
+            elif result.get('requires_project_selection'):
+                # 返回项目列表供用户选择
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "error": result['error'],
+                        "requires_project_selection": True,
+                        "available_projects": result['available_projects']
+                    }
+                )
+            else:
+                raise HTTPException(status_code=400, detail=result['error'])
             
     except HTTPException:
         raise
@@ -412,16 +444,15 @@ async def get_config(token: str = Depends(verify_token)):
         
         current_config["auto_ban_error_codes"] = getattr(config, 'AUTO_BAN_ERROR_CODES', [400, 403])
         
-        # 尝试从TOML文件读取额外配置
+        # 尝试从config.toml文件读取额外配置
         try:
-            state_file = os.path.join(config.CREDENTIALS_DIR, "creds_state.toml")
-            if os.path.exists(state_file):
-                with open(state_file, "r", encoding="utf-8") as f:
+            config_file = os.path.join(config.CREDENTIALS_DIR, "config.toml")
+            if os.path.exists(config_file):
+                with open(config_file, "r", encoding="utf-8") as f:
                     toml_data = toml.load(f)
                 
                 # 合并TOML配置（不覆盖环境变量）
-                toml_config = toml_data.get("config", {})
-                for key, value in toml_config.items():
+                for key, value in toml_data.items():
                     if key not in env_locked:
                         current_config[key] = value
         except Exception as e:
@@ -466,20 +497,16 @@ async def save_config(request: ConfigSaveRequest, token: str = Depends(verify_to
             if not isinstance(new_config["max_connections"], int) or new_config["max_connections"] < 10:
                 raise HTTPException(status_code=400, detail="最大连接数必须是大于等于10的整数")
         
-        # 读取现有的TOML文件
-        state_file = os.path.join(config.CREDENTIALS_DIR, "creds_state.toml")
-        existing_data = {}
+        # 读取现有的配置文件
+        config_file = os.path.join(config.CREDENTIALS_DIR, "config.toml")
+        existing_config = {}
         
         try:
-            if os.path.exists(state_file):
-                with open(state_file, "r", encoding="utf-8") as f:
-                    existing_data = toml.load(f)
+            if os.path.exists(config_file):
+                with open(config_file, "r", encoding="utf-8") as f:
+                    existing_config = toml.load(f)
         except Exception as e:
-            logging.warning(f"读取现有TOML文件失败: {e}")
-        
-        # 更新配置部分
-        if "config" not in existing_data:
-            existing_data["config"] = {}
+            logging.warning(f"读取现有配置文件失败: {e}")
         
         # 只更新不被环境变量锁定的配置项
         env_locked_keys = set()
@@ -494,25 +521,22 @@ async def save_config(request: ConfigSaveRequest, token: str = Depends(verify_to
         
         for key, value in new_config.items():
             if key not in env_locked_keys:
-                existing_data["config"][key] = value
+                existing_config[key] = value
         
-        # 写入TOML文件
-        os.makedirs(os.path.dirname(state_file), exist_ok=True)
-        with open(state_file, "w", encoding="utf-8") as f:
-            toml.dump(existing_data, f)
+        # 使用config模块的保存函数
+        config.save_config_to_toml(existing_config)
         
         # 热更新配置到内存中的模块（如果可能）
         try:
+            # 重新加载配置缓存
+            config.reload_config_cache()
+            
             # 更新credential_manager的配置
-            if "calls_per_rotation" in new_config and not env_locked_keys.intersection({"calls_per_rotation"}):
+            if "calls_per_rotation" in new_config and "calls_per_rotation" not in env_locked_keys:
                 credential_manager._calls_per_rotation = new_config["calls_per_rotation"]
             
             # 重新初始化HTTP客户端以应用新的代理配置（如果代理配置更改了）
             if "proxy" in new_config and "proxy" not in env_locked_keys:
-                # 更新模块级配置
-                import importlib
-                importlib.reload(config)
-                
                 # 重新创建HTTP客户端
                 if credential_manager._http_client:
                     await credential_manager._http_client.aclose()
