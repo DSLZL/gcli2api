@@ -93,13 +93,7 @@ async def start_auth(request: AuthStartRequest, token: str = Depends(verify_toke
         # 如果没有提供项目ID，尝试自动检测
         project_id = request.project_id
         if not project_id:
-            logging.info("未提供项目ID，尝试自动检测...")
-            try:
-                project_id = await auto_detect_project_id()
-                if project_id:
-                    logging.info(f"自动检测到项目ID: {project_id}")
-            except Exception as e:
-                logging.debug(f"自动检测项目ID失败: {e}")
+            logging.info("用户未提供项目ID，后续将使用自动检测...")
         
         # 使用认证令牌作为用户会话标识
         user_session = token if token else None
@@ -541,14 +535,16 @@ async def save_config(request: ConfigSaveRequest, token: str = Depends(verify_to
                 if credential_manager._http_client:
                     await credential_manager._http_client.aclose()
                     proxy = config.get_proxy_config()
-                    credential_manager._http_client = __import__('httpx').AsyncClient(
-                        timeout=new_config.get("http_timeout", 30),
-                        limits=__import__('httpx').Limits(
+                    client_kwargs = {
+                        "timeout": new_config.get("http_timeout", 30),
+                        "limits": __import__('httpx').Limits(
                             max_keepalive_connections=20, 
                             max_connections=new_config.get("max_connections", 100)
-                        ),
-                        proxy=proxy
-                    )
+                        )
+                    }
+                    if proxy:
+                        client_kwargs["proxy"] = proxy
+                    credential_manager._http_client = __import__('httpx').AsyncClient(**client_kwargs)
         except Exception as e:
             logging.warning(f"热更新配置失败: {e}")
         

@@ -20,7 +20,7 @@ CREDENTIALS_DIR = "geminicli/creds"
 AUTO_BAN_ENABLED = os.getenv("AUTO_BAN", "false").lower() in ("true", "1", "yes", "on")
 
 # 需要自动封禁的错误码
-AUTO_BAN_ERROR_CODES = [400, 403]
+AUTO_BAN_ERROR_CODES = [400, 403, 401]
 
 # Default Safety Settings for Google API
 DEFAULT_SAFETY_SETTINGS = [
@@ -153,7 +153,7 @@ def get_proxy_config():
     
     # httpx supports http, https, socks5 proxies
     # Format: http://proxy:port, https://proxy:port, socks5://proxy:port
-    return httpx.Proxy(proxy_url)
+    return proxy_url
 
 # Dynamic configuration getters
 def get_calls_per_rotation() -> int:
