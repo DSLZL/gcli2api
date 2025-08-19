@@ -12,7 +12,6 @@ services:
       - gcli2api-net
     environment:
       - PASSWORD=your_password_here
-      - AUTO_BAN=false
     volumes:
       - ./data/creds:/app/geminicli/creds
     healthcheck:
