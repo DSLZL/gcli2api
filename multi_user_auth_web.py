@@ -184,16 +184,12 @@ async def lifespan(app: FastAPI):
     # OAuth回调服务器现在动态按需启动，每个认证流程使用独立端口
     log.info("OAuth回调服务器将为每个认证流程动态分配端口")
 
-    # 检查环境变量配置
-    password = os.getenv('PASSWORD')
-    if not password:
-        log.warning("未设置PASSWORD环境变量，将使用默认密码 'pwd'")
-        log.warning("建议设置环境变量: export PASSWORD=your_password")
+    # 从配置获取密码和端口
+    from config import get_server_password, get_server_port
+    password = get_server_password()
+    port = get_server_port()
 
     log.info("Web服务已由 ASGI 服务器启动")
-
-    # 获取端口配置
-    port = int(os.getenv("PORT", "7861"))
     
     print("\n" + "="*60)
     print("🚀 Google OAuth 认证服务已启动")
@@ -213,52 +209,13 @@ async def lifespan(app: FastAPI):
 # 注册 lifespan 处理器
 app.router.lifespan_context = lifespan
 
-def get_available_port(start_port: int = 8000) -> int:
-    """获取可用端口"""
-    import socket
-    
-    for port in range(start_port, start_port + 100):
-        try:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.bind(('localhost', port))
-                return port
-        except OSError:
-            continue
-    
-    return start_port  # 如果都被占用，返回起始端口
-
-
-def main():
-    """主函数"""
-    print("启动 Google OAuth 认证服务...")
-    
-    # 解析命令行参数
-    import argparse
-    parser = argparse.ArgumentParser(description='Google OAuth 认证服务')
-    parser.add_argument('--host', default='localhost', help='服务器主机地址')
-    parser.add_argument('--port', type=int, default=8000, help='服务器端口')
-    parser.add_argument('--auto-port', action='store_true', help='自动寻找可用端口')
-    parser.add_argument('--log-level', default='info', 
-                       choices=['debug', 'info', 'warning', 'error'],
-                       help='日志级别')
-    
-    args = parser.parse_args()
-    
-    # 自动寻找可用端口
-    if args.auto_port:
-        args.port = get_available_port(args.port)
-        print(f"使用端口: {args.port}")
-    
-    # 保留原有 main 定义以兼容，但 __main__ 中改用 hypercorn 直接启动
-    return True
-
-
 if __name__ == "__main__":
     from hypercorn.asyncio import serve
     from hypercorn.config import Config
 
-    # 从环境变量获取端口，默认7861
-    PORT = int(os.getenv("PORT", "7861"))
+    # 从配置获取端口
+    from config import get_server_port
+    PORT = get_server_port()
     
     config = Config()
     config.bind = [f"0.0.0.0:{PORT}"]

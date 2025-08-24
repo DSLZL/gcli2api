@@ -7,7 +7,6 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from config import get_config_value
 
 # Import all routers
 from src.openai_router import router as openai_router
@@ -16,7 +15,7 @@ from src.web_routes import router as web_router
 
 # Import managers and utilities
 from src.credential_manager import CredentialManager
-from config import get_config_value
+from config import get_server_host, get_server_port
 from log import log
 
 # 全局凭证管理器
@@ -94,24 +93,6 @@ app.include_router(
     tags=["Web Interface"]
 )
 
-@app.get("/")
-async def root():
-    """根路径 - 服务状态信息"""
-    return {
-        "service": "GCLI2API",
-        "status": "running",
-        "endpoints": {
-            "openai_api": "/v1/chat/completions",
-            "openai_models": "/v1/models", 
-            "gemini_api": "/v1/models/{model}:generateContent",
-            "gemini_streaming": "/v1/models/{model}:streamGenerateContent",
-            "gemini_models": "/v1/models",
-            "control_panel": "/auth",
-        },
-        "docs": "/docs",
-        "credential_manager": "initialized" if global_credential_manager else "failed"
-    }
-
 def get_credential_manager():
     """获取全局凭证管理器实例"""
     return global_credential_manager
@@ -123,15 +104,14 @@ if __name__ == "__main__":
     from hypercorn.asyncio import serve
     from hypercorn.config import Config
     
-    # 从环境变量或配置获取端口
-    port = int(get_config_value("port", "7861", "PORT"))
-    host = get_config_value("host", "0.0.0.0", "HOST")
+    # 从环境变量或配置获取端口和主机
+    port = get_server_port()
+    host = get_server_host()
     
     log.info("=" * 60)
     log.info("🚀 启动 GCLI2API 2.0 - 模块化架构")
     log.info("=" * 60)
     log.info(f"📍 服务地址: http://127.0.0.1:{port}")
-    log.info(f"📖 API文档: http://127.0.0.1:{port}/docs")
     log.info(f"🔧 控制面板: http://127.0.0.1:{port}/auth")
     log.info("=" * 60)
     log.info("🔗 API端点:")

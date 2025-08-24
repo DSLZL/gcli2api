@@ -19,9 +19,7 @@ from .auth_api import (
     load_credentials_from_env, clear_env_credentials
 )
 from .credential_manager import CredentialManager
-from config import (
-    get_config_value
-)
+import config
 
 # 创建路由器
 router = APIRouter()
@@ -70,7 +68,8 @@ async def get_credential_manager():
 
 def authenticate(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
     """验证用户密码（控制面板使用）"""
-    password = get_config_value("password", "pwd", "PASSWORD")
+    from config import get_server_password
+    password = get_server_password()
     token = credentials.credentials
     if token != password:
         raise HTTPException(status_code=403, detail="密码错误")
@@ -100,6 +99,7 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
         raise HTTPException(status_code=401, detail="无效的认证令牌")
     return credentials.credentials
 
+@router.get("/", response_class=HTMLResponse)
 @router.get("/auth", response_class=HTMLResponse)
 async def serve_control_panel():
     """提供统一控制面板（包含认证、文件管理、配置等功能）"""
@@ -460,32 +460,25 @@ async def get_config(token: str = Depends(verify_token)):
         env_locked = []
         
         # 基础配置
+        current_config["code_assist_endpoint"] = config.get_code_assist_endpoint()
+        current_config["credentials_dir"] = config.get_credentials_dir()
+        current_config["proxy"] = config.get_proxy_config() or ""
+        
+        # 检查环境变量锁定状态
         if os.getenv("CODE_ASSIST_ENDPOINT"):
-            current_config["code_assist_endpoint"] = os.getenv("CODE_ASSIST_ENDPOINT")
             env_locked.append("code_assist_endpoint")
-        else:
-            current_config["code_assist_endpoint"] = getattr(config, 'CODE_ASSIST_ENDPOINT', '')
-        
         if os.getenv("CREDENTIALS_DIR"):
-            current_config["credentials_dir"] = os.getenv("CREDENTIALS_DIR")
             env_locked.append("credentials_dir")
-        else:
-            current_config["credentials_dir"] = getattr(config, 'CREDENTIALS_DIR', '')
-        
         if os.getenv("PROXY"):
-            current_config["proxy"] = os.getenv("PROXY")
             env_locked.append("proxy")
-        else:
-            current_config["proxy"] = ""
         
         # 自动封禁配置
-        if os.getenv("AUTO_BAN"):
-            current_config["auto_ban_enabled"] = os.getenv("AUTO_BAN", "true").lower() in ("true", "1", "yes", "on")
-            env_locked.append("auto_ban_enabled")
-        else:
-            current_config["auto_ban_enabled"] = getattr(config, 'AUTO_BAN_ENABLED', True)
+        current_config["auto_ban_enabled"] = config.get_auto_ban_enabled()
+        current_config["auto_ban_error_codes"] = config.get_auto_ban_error_codes()
         
-        current_config["auto_ban_error_codes"] = getattr(config, 'AUTO_BAN_ERROR_CODES', [400, 403])
+        # 检查环境变量锁定状态
+        if os.getenv("AUTO_BAN"):
+            env_locked.append("auto_ban_enabled")
         
         # 尝试从config.toml文件读取额外配置
         try:
@@ -501,36 +494,47 @@ async def get_config(token: str = Depends(verify_token)):
         except Exception as e:
             log.warning(f"读取TOML配置失败: {e}")
         
-        # 设置默认值
-        current_config.setdefault("calls_per_rotation", 10)
-        current_config.setdefault("http_timeout", 30)
-        current_config.setdefault("max_connections", 100)
-        current_config.setdefault("retry_429_max_retries", 20)
-        current_config.setdefault("retry_429_enabled", True)
-        current_config.setdefault("retry_429_interval", 0.1)
+        # 性能配置
+        current_config["calls_per_rotation"] = config.get_calls_per_rotation()
+        current_config["http_timeout"] = config.get_http_timeout()
+        current_config["max_connections"] = config.get_max_connections()
+        
+        # 429重试配置
+        current_config["retry_429_max_retries"] = config.get_retry_429_max_retries()
+        current_config["retry_429_enabled"] = config.get_retry_429_enabled()
+        current_config["retry_429_interval"] = config.get_retry_429_interval()
         
         # 日志配置
-        if os.getenv("LOG_LEVEL"):
-            current_config["log_level"] = os.getenv("LOG_LEVEL")
-            env_locked.append("log_level")
-        else:
-            current_config.setdefault("log_level", "info")
-        
-        if os.getenv("LOG_FILE"):
-            current_config["log_file"] = os.getenv("LOG_FILE")
-            env_locked.append("log_file")
-        else:
-            current_config.setdefault("log_file", "log.txt")
+        current_config["log_level"] = config.get_log_level()
+        current_config["log_file"] = config.get_log_file()
         
         # 抗截断配置
+        current_config["anti_truncation_max_attempts"] = config.get_anti_truncation_max_attempts()
+        
+        # 服务器配置
+        current_config["host"] = config.get_server_host()
+        current_config["port"] = config.get_server_port()
+        current_config["password"] = config.get_server_password()
+        
+        # 检查其他环境变量锁定状态
+        if os.getenv("RETRY_429_MAX_RETRIES"):
+            env_locked.append("retry_429_max_retries")
+        if os.getenv("RETRY_429_ENABLED"):
+            env_locked.append("retry_429_enabled")
+        if os.getenv("RETRY_429_INTERVAL"):
+            env_locked.append("retry_429_interval")
+        if os.getenv("LOG_LEVEL"):
+            env_locked.append("log_level")
+        if os.getenv("LOG_FILE"):
+            env_locked.append("log_file")
         if os.getenv("ANTI_TRUNCATION_MAX_ATTEMPTS"):
-            try:
-                current_config["anti_truncation_max_attempts"] = int(os.getenv("ANTI_TRUNCATION_MAX_ATTEMPTS"))
-                env_locked.append("anti_truncation_max_attempts")
-            except ValueError:
-                current_config.setdefault("anti_truncation_max_attempts", 3)
-        else:
-            current_config.setdefault("anti_truncation_max_attempts", 3)
+            env_locked.append("anti_truncation_max_attempts")
+        if os.getenv("HOST"):
+            env_locked.append("host")
+        if os.getenv("PORT"):
+            env_locked.append("port")
+        if os.getenv("PASSWORD"):
+            env_locked.append("password")
         
         return JSONResponse(content={
             "config": current_config,
@@ -552,6 +556,9 @@ async def save_config(request: ConfigSaveRequest, token: str = Depends(verify_to
         import toml
         
         new_config = request.config
+        
+        log.info(f"收到的配置数据: {list(new_config.keys())}")
+        log.info(f"收到的password值: {new_config.get('password', 'NOT_FOUND')}")
         
         # 验证配置项
         if "calls_per_rotation" in new_config:
@@ -592,6 +599,19 @@ async def save_config(request: ConfigSaveRequest, token: str = Depends(verify_to
             if not isinstance(new_config["anti_truncation_max_attempts"], int) or new_config["anti_truncation_max_attempts"] < 1 or new_config["anti_truncation_max_attempts"] > 10:
                 raise HTTPException(status_code=400, detail="抗截断最大重试次数必须是1-10之间的整数")
         
+        # 验证服务器配置
+        if "host" in new_config:
+            if not isinstance(new_config["host"], str) or not new_config["host"].strip():
+                raise HTTPException(status_code=400, detail="服务器主机地址不能为空")
+        
+        if "port" in new_config:
+            if not isinstance(new_config["port"], int) or new_config["port"] < 1 or new_config["port"] > 65535:
+                raise HTTPException(status_code=400, detail="端口号必须是1-65535之间的整数")
+        
+        if "password" in new_config:
+            if not isinstance(new_config["password"], str):
+                raise HTTPException(status_code=400, detail="访问密码必须是字符串")
+        
         # 读取现有的配置文件
         config_file = os.path.join(config.CREDENTIALS_DIR, "config.toml")
         existing_config = {}
@@ -625,18 +645,32 @@ async def save_config(request: ConfigSaveRequest, token: str = Depends(verify_to
             env_locked_keys.add("log_file")
         if os.getenv("ANTI_TRUNCATION_MAX_ATTEMPTS"):
             env_locked_keys.add("anti_truncation_max_attempts")
+        if os.getenv("HOST"):
+            env_locked_keys.add("host")
+        if os.getenv("PORT"):
+            env_locked_keys.add("port")
+        if os.getenv("PASSWORD"):
+            env_locked_keys.add("password")
         
         for key, value in new_config.items():
             if key not in env_locked_keys:
                 existing_config[key] = value
+                if key == 'password':
+                    log.info(f"设置password字段为: {value}")
+        
+        log.info(f"最终保存的existing_config中password = {existing_config.get('password', 'NOT_FOUND')}")
         
         # 使用config模块的保存函数
         config.save_config_to_toml(existing_config)
         
+        # 验证保存后的结果
+        test_password = config.get_server_password()
+        log.info(f"保存后立即读取的密码: {test_password}")
+        
         # 热更新配置到内存中的模块（如果可能）
         try:
-            # 重新加载配置缓存
-            config.reload_config_cache()
+            # save_config_to_toml已经更新了缓存，不需要reload
+            pass
             
             # 更新credential_manager的配置
             if "calls_per_rotation" in new_config and "calls_per_rotation" not in env_locked_keys:
@@ -730,7 +764,7 @@ async def get_env_creds_status(token: str = Depends(verify_token)):
                               if key.startswith('GCLI_CREDS_') and value.strip()}
         
         # 检查自动加载设置
-        auto_load_enabled = os.getenv('AUTO_LOAD_ENV_CREDS', 'false').lower() in ('true', '1', 'yes', 'on')
+        auto_load_enabled = config.get_auto_load_env_creds()
         
         # 统计已存在的环境变量凭证文件
         from config import CREDENTIALS_DIR
